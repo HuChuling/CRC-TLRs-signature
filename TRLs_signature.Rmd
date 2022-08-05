@@ -1,11 +1,11 @@
 ---
-title: "github_modeling"
+title: "TLRs signature"
 author: "hcl"
 date: "2022-08-03"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+
 knitr::opts_chunk$set(echo = TRUE)
 library(cowplot)
 library(survivalROC)
@@ -16,9 +16,7 @@ library(readxl)
 library(limma)
 library(gfplot)
 library(gaofenglib)
-```
 
-```{r}
 load(file = "./GEO_immune_cell_line_data.RData")
 load(file = "./CCLE_CRC_tumor_cell_line_data.RData")
 load(file = "./lncRNA_annotation_table.RData")
@@ -29,9 +27,7 @@ top_n_percent <- 0.1
 tsi_limit <- 0.3
 logFC_set <- 1
 uni_cox_P <- 0.1
-```
 
-```{r}
 #a function for identifying top 10% expressed lncRNAs in each immune cell type
 top_exp_select_union <- function(sample_gene_matrix, top_n) {
   all_top_select <- list()
@@ -85,9 +81,7 @@ selecting_lnc_ensembl_for_model_making <- function(top_n_percent, tsi_limit, log
 
 #survival
 get_survival <- function (clin)  {survival::Surv(clin[, "dfs.delay"], clin[, "dfs.event"] == 1)}
-```
 
-```{r}
 #datasets and cohorts
 signature_DE_tsilow_topexp_lnc <- selecting_lnc_ensembl_for_model_making(top_n_percent, tsi_limit, logFC_set)
 signature <- signature_DE_tsilow_topexp_lnc
@@ -129,5 +123,3 @@ s <- cv.fit$lambda.min
 plot(cv.fit)
 plot_lasso(fit, s)
 signature_model_lnc_coef <- coef(fit)[,fit[["lambda"]] == s] [coef(fit)[,fit[["lambda"]] == s]!=0 ]
-```
-
