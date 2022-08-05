@@ -1,0 +1,133 @@
+---
+title: "github_modeling"
+author: "hcl"
+date: "2022-08-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(cowplot)
+library(survivalROC)
+library(glmnet)
+library(survival)
+library(tidyverse)
+library(readxl)
+library(limma)
+library(gfplot)
+library(gaofenglib)
+```
+
+```{r}
+load(file = "./GEO_immune_cell_line_data.RData")
+load(file = "./CCLE_CRC_tumor_cell_line_data.RData")
+load(file = "./lncRNA_annotation_table.RData")
+load(file = "./GEO_CRC_datasets.RData")
+load(file = "./TCGA_CRC_data.RData")
+
+top_n_percent <- 0.1
+tsi_limit <- 0.3
+logFC_set <- 1
+uni_cox_P <- 0.1
+```
+
+```{r}
+#a function for identifying top 10% expressed lncRNAs in each immune cell type
+top_exp_select_union <- function(sample_gene_matrix, top_n) {
+  all_top_select <- list()
+  top_value <- c()
+  top_names <- c()
+  top_num <- floor(ncol(sample_gene_matrix)*(1-top_n))
+  for (i in 1:nrow(sample_gene_matrix)) {
+    top_value <- sort( as.vector(sample_gene_matrix[i,]) )[top_num]
+    top_names <- colnames(sample_gene_matrix)[as.vector(sample_gene_matrix[i,]) > top_value]
+    all_top_select[[i]] <- top_names
+  }
+  aa <- Reduce(union, all_top_select)
+  aa
+}
+
+#a function for TSI index calcultion
+tsi_transform <- function(sample_ensembl_tab) {
+  aaa <- c()
+  for (i in 1:ncol(sample_ensembl_tab)) {aaa[i] <- sum(1 - sample_ensembl_tab[,i]/max(sample_ensembl_tab[,i])) / (nrow(sample_ensembl_tab)-1)}
+  aaa
+}
+
+#selecting TLRs in CRC datadets for modeling
+select_top_lnc_col <- function(sample_ensembl_tab, im_related_ensembl ) {  
+  data.frame( sample_ensembl_tab[ , colnames(sample_ensembl_tab) %in% im_related_ensembl] )
+}
+
+selecting_lnc_ensembl_for_model_making <- function(top_n_percent, tsi_limit, logFC_set) {
+  aa <- top_exp_select_union(gse_im_lnc_exp_meantype, top_n_percent)
+  im_top_tsi_small_ensembl <- colnames(select_top_lnc_col(gse_im_lnc_exp_meantype, aa))[ tsi_transform(select_top_lnc_col(gse_im_lnc_exp_meantype, aa)) < tsi_limit ]
+
+  ccle_crc_top_lnc_exp <- ccle_crc_lnc_exprs[, colnames(ccle_crc_lnc_exprs)%in%im_top_tsi_small_ensembl ]
+  gse_im_top_lnc_exp <- gse_im_lnc_exp_combat[, colnames(gse_im_lnc_exp_combat)%in%im_top_tsi_small_ensembl] 
+
+  up_down_tab <- rbind(ccle_crc_top_lnc_exp, gse_im_top_lnc_exp)
+  up_down_tab_group <- factor( c(replicate(nrow(ccle_crc_top_lnc_exp), "ccle"), replicate(nrow(gse_im_top_lnc_exp), "gse")) )
+  
+  design <- model.matrix(~ up_down_tab_group + 0)
+  colnames(design) <- levels(up_down_tab_group)
+  rownames(design) <- rownames(up_down_tab)
+  contrast.matrix<-makeContrasts(gse-ccle ,levels = design)
+  fit <- lmFit(t(up_down_tab), design)
+  fit2 <-  contrasts.fit(fit, contrast.matrix)
+  fit2 <- eBayes(fit2, trend=TRUE)
+  output <- topTable(fit2, coef=1 ,n=Inf)
+
+  lnc_ensembl_model_making <- rownames(output %>% filter(logFC > logFC_set) %>% filter(adj.P.Val < 0.05))
+  
+  lnc_ensembl_model_making
+}
+
+#survival
+get_survival <- function (clin)  {survival::Surv(clin[, "dfs.delay"], clin[, "dfs.event"] == 1)}
+```
+
+```{r}
+#datasets and cohorts
+signature_DE_tsilow_topexp_lnc <- selecting_lnc_ensembl_for_model_making(top_n_percent, tsi_limit, logFC_set)
+signature <- signature_DE_tsilow_topexp_lnc
+
+clin_all <- rbind(gse_crc_clin, tcga_crc_clin)
+exp_all <- rbind(gse_crc_lnc_exp[,  signature], tcga_crc_lnc_exp[,  signature])
+exp_all <-exp_all[rownames(exp_all) %in% clin_all$id, ]
+
+exp_all_combat <- t(sva::ComBat(dat=t(exp_all), batch=clin_all$cohort, par.prior=TRUE, prior.plots=FALSE))
+
+datasets <- list()
+datasets[[1]] <- exp_all_combat[clin_all$cohort == "GSE39582",]
+datasets[[2]] <- exp_all_combat[clin_all$cohort == "TCGA",]
+datasets[[3]] <- exp_all_combat[(clin_all$cohort != "GSE39582") & (clin_all$cohort != "TCGA"),]
+names(datasets) <- c("training-GSE39582", "testing-TCGA", "testing-6GSEs")
+clin <- list()
+clin[[1]] <- clin_all[clin_all$cohort == "GSE39582",]
+clin[[2]] <- clin_all[clin_all$cohort == "TCGA",]
+clin[[3]] <- clin_all[(clin_all$cohort != "GSE39582") & (clin_all$cohort != "TCGA"),]
+
+regression_tab <- data.frame( exp_all_combat ) %>% 
+  mutate(gsm = rownames(exp_all_combat)) %>% 
+  left_join(clin_all, by = c("gsm" = "id"))
+
+#univariate Cox proportional hazards regression evaluating prognostic value of each TRL
+ind <- sapply(c(1:length(signature)), 
+              function(i){summary(coxph(Surv(rfs.delay, rfs.event)~ (get(signature[i])) ,
+                                        data=regression_tab[regression_tab$cohort == "GSE39582",]))$coef[5]} )<uni_cox_P
+
+#training on the GSE39582
+dat <- datasets[[1]][,ind]
+sur <- get_survival(clin[[1]]) 
+set.seed()
+cv.fit <- cv.glmnet(dat, sur, family="cox", parallel = T, alpha=1)
+fit <- glmnet(dat, sur, family="cox", alpha=1)
+s <- cv.fit$lambda.min
+
+#showing the TLRs model 
+plot(cv.fit)
+plot_lasso(fit, s)
+signature_model_lnc_coef <- coef(fit)[,fit[["lambda"]] == s] [coef(fit)[,fit[["lambda"]] == s]!=0 ]
+```
+
