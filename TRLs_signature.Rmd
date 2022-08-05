@@ -5,7 +5,7 @@ date: "2022-08-03"
 output: html_document
 ---
 
-
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(cowplot)
 library(survivalROC)
@@ -16,7 +16,9 @@ library(readxl)
 library(limma)
 library(gfplot)
 library(gaofenglib)
+```
 
+```{r}
 load(file = "./GEO_immune_cell_line_data.RData")
 load(file = "./CCLE_CRC_tumor_cell_line_data.RData")
 load(file = "./lncRNA_annotation_table.RData")
@@ -123,3 +125,5 @@ s <- cv.fit$lambda.min
 plot(cv.fit)
 plot_lasso(fit, s)
 signature_model_lnc_coef <- coef(fit)[,fit[["lambda"]] == s] [coef(fit)[,fit[["lambda"]] == s]!=0 ]
+```
+
