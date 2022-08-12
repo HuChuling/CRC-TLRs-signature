@@ -135,7 +135,7 @@ ind <- sapply(c(1:length(signature)),
 dat <- datasets[[1]][,ind]
 sur <- get_survival(clin[[1]]) 
 set.seed(1234)
-cv.fit <- cv.glmnet(dat, sur, family="cox", parallel = T, alpha=1)
+cv.fit <- cv.glmnet(dat, sur, family="cox", parallel = T, alpha=1) #LASSO Regrssion
 fit <- glmnet(dat, sur, family="cox", alpha=1)
 s <- cv.fit$lambda.min
 
