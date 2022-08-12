@@ -18,6 +18,7 @@ library(gfplot)
 library(gaofenglib)
 ```
 
+
 ```{r}
 load(file = "./GEO_immune_cell_line_data.RData")
 load(file = "./CCLE_CRC_tumor_cell_line_data.RData")
@@ -34,7 +35,10 @@ tsi_limit <- 0.3
 logFC_set <- 1
 #cutoff value for univariate Cox proportional hazards regression analysis
 uni_cox_P <- 0.1
+```
 
+
+```{r}
 #a function for identifying top 10% expressed lncRNAs in each immune cell type
 top_exp_select_union <- function(sample_gene_matrix, top_n) {
   all_top_select <- list()
@@ -57,7 +61,7 @@ tsi_transform <- function(sample_ensembl_tab) {
   aaa
 }
 
-#selecting TLRs in CRC datadets for modeling
+#functions for selecting TLRs in CRC datadets for modeling
 select_top_lnc_col <- function(sample_ensembl_tab, im_related_ensembl ) {  
   data.frame( sample_ensembl_tab[ , colnames(sample_ensembl_tab) %in% im_related_ensembl] )
 }
@@ -93,7 +97,10 @@ selecting_lnc_ensembl_for_model_making <- function(top_n_percent, tsi_limit, log
 
 #survival information gathering function
 get_survival <- function (clin)  {survival::Surv(clin[, "dfs.delay"], clin[, "dfs.event"] == 1)}
+```
 
+
+```{r}
 #selecting lncRNAs that universally high-expressed in the immune cells of TIME
 signature_DE_tsilow_topexp_lnc <- selecting_lnc_ensembl_for_model_making(top_n_percent, tsi_limit, logFC_set)
 signature <- signature_DE_tsilow_topexp_lnc
